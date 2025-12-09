@@ -1,6 +1,7 @@
 // Google Maps Geocoding API service for reverse geocoding
 
-import { Loader } from "@googlemaps/js-api-loader";
+import { setOptions } from "@googlemaps/js-api-loader";
+// Note: importLibrary is called via google.maps.importLibrary after setOptions
 
 // Declare global google maps types if not available
 declare global {
@@ -79,6 +80,8 @@ declare global {
       interface LatLngBoundsLiteral {}
       interface GeocoderComponentRestrictions {}
       interface GeocoderPlusCode {}
+      // Add the importLibrary function
+      function importLibrary(library: string): Promise<any>;
     }
   }
 }
@@ -121,20 +124,14 @@ interface GoogleMapsGeocodeResult {
   types: string[];
 }
 
-interface GoogleMapsGeocodeResponse {
-  results: GoogleMapsGeocodeResult[];
-  status: string;
-  error_message?: string;
-}
-
-// Google Maps API loader instance
-let googleMapsLoader: Loader | null = null;
+// Google Maps API initialization flag
+let googleMapsInitialized = false;
 
 /**
- * Initialize the Google Maps API loader
+ * Initialize the Google Maps API with setOptions
  */
-function getGoogleMapsLoader(): Loader {
-  if (!googleMapsLoader) {
+function initGoogleMaps() {
+  if (!googleMapsInitialized) {
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
     if (!apiKey || apiKey === "your_google_maps_api_key_here") {
@@ -143,14 +140,14 @@ function getGoogleMapsLoader(): Loader {
       );
     }
 
-    googleMapsLoader = new Loader({
-      apiKey,
-      version: "weekly",
+    setOptions({
+      key: apiKey,
+      v: "weekly",
       libraries: ["places"], // Include places library for geocoding
     });
-  }
 
-  return googleMapsLoader;
+    googleMapsInitialized = true;
+  }
 }
 
 /**
@@ -164,10 +161,11 @@ export async function reverseGeocode(
   lon: number
 ): Promise<import("./openStreetMapService").ReverseGeocodeResult | null> {
   try {
-    const loader = getGoogleMapsLoader();
+    // Initialize Google Maps API if not already initialized
+    initGoogleMaps();
 
-    // Load the Google Maps API if not already loaded
-    const google: any = await loader.load();
+    // Load the geocoding library
+    await google.maps.importLibrary("geocoding");
 
     // Create a Geocoding service instance
     const geocoder = new google.maps.Geocoder();
