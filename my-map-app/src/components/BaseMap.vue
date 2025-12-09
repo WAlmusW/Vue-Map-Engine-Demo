@@ -372,11 +372,10 @@ async function initGoogleMaps() {
     v: "weekly",
   });
 
-  await google.maps.importLibrary("maps");
+  const { Map } = await google.maps.importLibrary("maps");
 
   // The google namespace is now available globally
-
-  googleMap = new google.maps.Map(mapContainer.value, {
+  googleMap = new Map(mapContainer.value, {
     center: { lat: initialCenter[0], lng: initialCenter[1] },
     zoom: initialZoom,
     ...(src.mapId ? { mapId: src.mapId } : {}),
@@ -406,7 +405,7 @@ async function initGoogleMaps() {
 /* ===========================
    Markers update
    =========================== */
-function updateMarkers() {
+async function updateMarkers() {
   const markers = props.markers ?? [];
 
   if (activeEngine.value === "leaflet") {
@@ -448,17 +447,19 @@ function updateMarkers() {
   } else if (activeEngine.value === "google") {
     if (!googleMap) return;
 
+    const { Marker, InfoWindow } = await google.maps.importLibrary("maps");
+
     googleMarkers.forEach((m) => m.setMap(null));
     googleMarkers = [];
 
     markers.forEach((m) => {
-      const marker = new google.maps.Marker({
+      const marker = new Marker({
         position: { lat: m.lat, lng: m.lng },
         map: googleMap,
       });
 
       if (m.popup) {
-        const info = new google.maps.InfoWindow({
+        const info = new InfoWindow({
           content: m.popup,
         });
         marker.addListener("click", () => {

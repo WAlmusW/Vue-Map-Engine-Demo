@@ -139,6 +139,19 @@
           maxZoom: 19,
         }"
       />
+
+      <h3>Using Google Maps</h3>
+      <DisplayMap
+        :lat="position.lat"
+        :lng="position.lng"
+        :zoom="6"
+        popup-text="This is the selected point"
+        :engine="'google'"
+        :source="{
+          type: 'google',
+          apiKey: googleMapsApiKey,
+        }"
+      />
     </section>
   </div>
 </template>
@@ -157,6 +170,8 @@ interface LatLngValue {
   lat: number | null;
   lng: number | null;
 }
+
+const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const position = ref<LatLngValue>({
   lat: null,
