@@ -61,7 +61,8 @@ export async function reverseGeocode(
   lon: number
 ): Promise<ReverseGeocodeResult | null> {
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
+    const email = import.meta.env.VITE_EMAIL || "";
+    const url = `https://nominatim.openstreetmap.org/reverse?email=${email}&lat=${lat}&lon=${lon}&format=json`;
 
     const response = await fetch(url);
 
