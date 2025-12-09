@@ -4,15 +4,11 @@
 
     <section class="section">
       <h2>1. Input Map (pick coordinates)</h2>
-      <InputMap
+      <InputGoogle
         v-model="position"
-        mode="center"
-        :engine="'leaflet'"
         :source="{
-          type: 'raster',
-          urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          attribution: '&copy; OpenStreetMap contributors',
-          maxZoom: 19,
+          type: 'google',
+          apiKey: googleMapsApiKey,
         }"
       />
 
@@ -54,13 +50,24 @@
     >
       <h2>2. Display Map (read-only)</h2>
 
-      <h3>Using Leaflet + OpenStreetMap</h3>
-      <DisplayMap
+      <h3>Using Google Maps</h3>
+      <DisplayGoogle
         :lat="position.lat"
         :lng="position.lng"
         :zoom="6"
-        popup-text="This is the selected point"
-        :engine="'leaflet'"
+        :popupText="'This is the selected point'"
+        :source="{
+          type: 'google',
+          apiKey: googleMapsApiKey,
+        }"
+      />
+
+      <h3>Using Leaflet + OpenStreetMap</h3>
+      <DisplayLeaflet
+        :lat="position.lat"
+        :lng="position.lng"
+        :zoom="6"
+        :popupText="'This is the selected point'"
         :source="{
           type: 'raster',
           urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -70,12 +77,11 @@
       />
 
       <h3>Using Leaflet + OpenTopoMap</h3>
-      <DisplayMap
+      <DisplayLeaflet
         :lat="position.lat"
         :lng="position.lng"
         :zoom="10"
-        popup-text="Topo view"
-        :engine="'leaflet'"
+        :popupText="'Topo view'"
         :source="{
           type: 'raster',
           urlTemplate: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
@@ -86,12 +92,11 @@
       />
 
       <h3>Using Leaflet + Carto</h3>
-      <DisplayMap
+      <DisplayLeaflet
         :lat="position.lat"
         :lng="position.lng"
         :zoom="10"
-        popup-text="Topo view"
-        :engine="'leaflet'"
+        :popupText="'Topo view'"
         :source="{
           type: 'raster',
           urlTemplate:
@@ -103,12 +108,11 @@
       />
 
       <h3>Using MapLibre + demo tiles</h3>
-      <DisplayMap
+      <DisplayMaplibre
         :lat="position.lat"
         :lng="position.lng"
         :zoom="6"
-        popup-text="This is the selected point"
-        :engine="'maplibre'"
+        :popupText="'This is the selected point'"
         :source="{
           type: 'maplibre-style',
           styleUrl: 'https://demotiles.maplibre.org/style.json',
@@ -116,40 +120,25 @@
       />
 
       <h3>Using OpenLayers + built-in OSM</h3>
-      <DisplayMap
+      <DisplayOpenLayers
         :lat="position.lat"
         :lng="position.lng"
         :zoom="6"
-        popup-text="This is the selected point"
-        :engine="'openlayers'"
+        :popupText="'This is the selected point'"
         :source="{ type: 'openlayers-osm' }"
       />
 
       <h3>Using OpenLayers + external OpenStreetMap</h3>
-      <DisplayMap
+      <DisplayOpenLayers
         :lat="position.lat"
         :lng="position.lng"
         :zoom="6"
-        popup-text="This is the selected point"
-        :engine="'openlayers'"
+        :popupText="'This is the selected point'"
         :source="{
           type: 'raster',
           urlTemplate: 'https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png',
           attribution: '&copy; OpenStreetMap contributors',
           maxZoom: 19,
-        }"
-      />
-
-      <h3>Using Google Maps</h3>
-      <DisplayMap
-        :lat="position.lat"
-        :lng="position.lng"
-        :zoom="6"
-        popup-text="This is the selected point"
-        :engine="'google'"
-        :source="{
-          type: 'google',
-          apiKey: googleMapsApiKey,
         }"
       />
     </section>
@@ -158,8 +147,11 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import InputMap from "./components/InputMap.vue";
-import DisplayMap from "./components/DisplayMap.vue";
+import InputGoogle from "./components/inputmap/InputGoogle.vue";
+import DisplayGoogle from "./components/displaymap/DisplayGoogle.vue";
+import DisplayLeaflet from "./components/displaymap/DisplayLeaflet.vue";
+import DisplayMaplibre from "./components/displaymap/DisplayMaplibre.vue";
+import DisplayOpenLayers from "./components/displaymap/DisplayOpenLayers.vue";
 import {
   reverseGeocode as osmReverseGeocode,
   formatAddress,
