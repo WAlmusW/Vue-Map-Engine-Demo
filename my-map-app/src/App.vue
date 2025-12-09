@@ -167,6 +167,8 @@ const address = ref<string>("");
 const isLoadingAddress = ref<boolean>(false);
 const selectedService = ref<"openstreetmap" | "googlemaps">("openstreetmap");
 
+const geocodingTimeoutId = ref<number | null>(null);
+
 /**
  * Get the appropriate reverse geocoding function based on selected service
  */
@@ -176,8 +178,10 @@ function getReverseGeocodeFunction() {
     : osmReverseGeocode;
 }
 
-// Watch for position changes and reverse geocode
-watch(position, async (newPosition) => {
+/**
+ * Perform reverse geocoding with debouncing
+ */
+async function performReverseGeocoding(newPosition: LatLngValue) {
   if (newPosition.lat != null && newPosition.lng != null) {
     isLoadingAddress.value = true;
     try {
@@ -200,6 +204,16 @@ watch(position, async (newPosition) => {
     address.value = "";
     isLoadingAddress.value = false;
   }
+}
+
+// Watch for position changes and reverse geocode (debounced by 1000ms)
+watch(position, (newPosition) => {
+  if (geocodingTimeoutId.value) {
+    clearTimeout(geocodingTimeoutId.value);
+  }
+  geocodingTimeoutId.value = setTimeout(() => {
+    performReverseGeocoding(newPosition);
+  }, 1000);
 });
 
 // Watch for service changes to re-geocode with new service
