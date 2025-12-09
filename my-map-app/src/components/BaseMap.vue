@@ -54,9 +54,14 @@ import Fill from "ol/style/Fill";
 import Stroke from "ol/style/Stroke";
 
 /* ===========================
+   Google Maps imports
+   =========================== */
+import { setOptions } from "@googlemaps/js-api-loader";
+
+/* ===========================
    Types
    =========================== */
-export type MapEngine = "leaflet" | "maplibre" | "openlayers";
+export type MapEngine = "leaflet" | "maplibre" | "openlayers" | "google";
 
 export interface RasterSource {
   type: "raster";
@@ -74,10 +79,17 @@ export interface OpenLayersOsmSource {
   type: "openlayers-osm";
 }
 
+export interface GoogleMapsSource {
+  type: "google";
+  apiKey: string;
+  mapId?: string; // optional map style ID if you configured one
+}
+
 export type BaseMapSource =
   | RasterSource
   | MapLibreStyleSource
-  | OpenLayersOsmSource;
+  | OpenLayersOsmSource
+  | GoogleMapsSource;
 
 export interface BaseMapMarker {
   id?: string | number;
@@ -128,6 +140,12 @@ let olMarkersSource: VectorSource | null = null;
 let olMarkersLayer: VectorLayer<VectorSource> | null = null;
 
 /* ===========================
+   Google Maps state
+   =========================== */
+let googleMap: any = null;
+let googleMarkers: any[] = [];
+
+/* ===========================
    Destroy everything
    =========================== */
 function destroyMap() {
@@ -151,6 +169,12 @@ function destroyMap() {
     olMarkersSource = null;
     olMarkersLayer = null;
   }
+
+  if (googleMap) {
+    googleMarkers.forEach((m) => m.setMap(null));
+    googleMarkers = [];
+    googleMap = null;
+  }
 }
 
 /* ===========================
@@ -166,6 +190,8 @@ function initMap() {
     initMapLibre();
   } else if (activeEngine.value === "openlayers") {
     initOpenLayers();
+  } else if (activeEngine.value === "google") {
+    initGoogleMaps();
   }
 }
 
@@ -202,7 +228,6 @@ function initLeaflet() {
     });
   }
 
-  // 🔹 emit center on moveend + once initially
   const emitLeafletCenter = () => {
     if (!leafletMap) return;
     const c = leafletMap.getCenter();
@@ -326,6 +351,59 @@ function initOpenLayers() {
 }
 
 /* ===========================
+   Google Maps init
+   =========================== */
+async function initGoogleMaps() {
+  if (!mapContainer.value) return;
+
+  const initialCenter = props.center ?? [0, 0];
+  const initialZoom = props.zoom ?? 2;
+
+  const src = props.source as GoogleMapsSource | undefined;
+  if (!src || src.type !== "google" || !src.apiKey) {
+    console.error(
+      "Google Maps engine requires a source with type 'google' and an apiKey"
+    );
+    return;
+  }
+
+  setOptions({
+    key: src.apiKey,
+    v: "weekly",
+  });
+
+  await google.maps.importLibrary("maps");
+
+  // The google namespace is now available globally
+
+  googleMap = new google.maps.Map(mapContainer.value, {
+    center: { lat: initialCenter[0], lng: initialCenter[1] },
+    zoom: initialZoom,
+    ...(src.mapId ? { mapId: src.mapId } : {}),
+  });
+
+  if (props.clickable) {
+    googleMap.addListener("click", (e: any) => {
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+      emit("map-click", { lat, lng });
+    });
+  }
+
+  const emitGoogleCenter = () => {
+    if (!googleMap) return;
+    const c = googleMap.getCenter();
+    if (!c) return;
+    emit("center-change", { lat: c.lat(), lng: c.lng() });
+  };
+
+  googleMap.addListener("idle", emitGoogleCenter);
+  emitGoogleCenter();
+
+  updateMarkers();
+}
+
+/* ===========================
    Markers update
    =========================== */
 function updateMarkers() {
@@ -367,6 +445,29 @@ function updateMarkers() {
       });
       olMarkersSource!.addFeature(feature);
     });
+  } else if (activeEngine.value === "google") {
+    if (!googleMap) return;
+
+    googleMarkers.forEach((m) => m.setMap(null));
+    googleMarkers = [];
+
+    markers.forEach((m) => {
+      const marker = new google.maps.Marker({
+        position: { lat: m.lat, lng: m.lng },
+        map: googleMap,
+      });
+
+      if (m.popup) {
+        const info = new google.maps.InfoWindow({
+          content: m.popup,
+        });
+        marker.addListener("click", () => {
+          info.open({ anchor: marker, map: googleMap });
+        });
+      }
+
+      googleMarkers.push(marker);
+    });
   }
 }
 
@@ -392,6 +493,8 @@ watch(
       mapLibreMap.setCenter([newCenter[1], newCenter[0]]);
     } else if (activeEngine.value === "openlayers" && olMap) {
       olMap.getView().setCenter(fromLonLat([newCenter[1], newCenter[0]]));
+    } else if (activeEngine.value === "google" && googleMap) {
+      googleMap.setCenter({ lat: newCenter[0], lng: newCenter[1] });
     }
   }
 );
@@ -407,6 +510,8 @@ watch(
       mapLibreMap.setZoom(newZoom);
     } else if (activeEngine.value === "openlayers" && olMap) {
       olMap.getView().setZoom(newZoom);
+    } else if (activeEngine.value === "google" && googleMap) {
+      googleMap.setZoom(newZoom);
     }
   }
 );
