@@ -18,7 +18,6 @@ export interface OpenLayersOsmSource {
 
 export interface GoogleMapsSource {
   type: "google";
-  apiKey: string;
   mapId?: string; // optional map style ID if you configured one
 }
 
@@ -39,3 +38,5 @@ export interface LatLngValue {
   lat: number | null;
   lng: number | null;
 }
+
+export type InputMapMode = "click" | "drag" | "center";

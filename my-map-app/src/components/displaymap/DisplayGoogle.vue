@@ -9,7 +9,7 @@ import type { GoogleMapsSource } from "../../types/map";
 /* ===========================
    Google Maps imports
    =========================== */
-import { setOptions } from "@googlemaps/js-api-loader";
+import { importLibrary } from "@googlemaps/js-api-loader";
 
 interface Props {
   lat: number;
@@ -65,21 +65,19 @@ async function initMap() {
     return;
   }
 
-  setOptions({
-    key: src.apiKey,
-    v: "weekly",
-  });
-
   // Need to wait for next tick to ensure DOM is ready
   await nextTick();
 
-  const { Map, Marker, InfoWindow } = await google.maps.importLibrary("maps");
+  const { Map, Marker, InfoWindow } = await importLibrary("maps");
 
   // The google namespace is now available globally
   googleMap = new Map(mapContainer.value, {
     center: initialCenter,
     zoom: initialZoom,
     ...(src.mapId ? { mapId: src.mapId } : {}),
+    disableDefaultUI: true,
+    cameraControl: true,
+    fullscreenControl: true,
   });
 
   googleMarker = new Marker({

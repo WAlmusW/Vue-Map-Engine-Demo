@@ -4,12 +4,16 @@
 
     <section class="section">
       <h2>1. Input Map (pick coordinates)</h2>
+      {{ DarkModeStyle }}
+
       <InputGoogle
         v-model="position"
+        mode="drag"
         :source="{
           type: 'google',
-          apiKey: googleMapsApiKey,
         }"
+        :style="DarkModeStyle"
+        :controls="controls"
       />
 
       <p>
@@ -58,7 +62,6 @@
         :popupText="'This is the selected point'"
         :source="{
           type: 'google',
-          apiKey: googleMapsApiKey,
         }"
       />
 
@@ -157,13 +160,16 @@ import {
   formatAddress,
 } from "./services/openStreetMapService";
 import { reverseGeocode as gmapsReverseGeocode } from "./services/googleMapsService";
+import type { MapControl } from "./types/google_map";
+import {
+  DarkModeStyle,
+  RetroStyle,
+} from "./components/inputmap/GoogleMapStyle";
 
 interface LatLngValue {
   lat: number | null;
   lng: number | null;
 }
-
-const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const position = ref<LatLngValue>({
   lat: null,
@@ -173,8 +179,90 @@ const position = ref<LatLngValue>({
 const address = ref<string>("");
 const isLoadingAddress = ref<boolean>(false);
 const selectedService = ref<"openstreetmap" | "googlemaps">("openstreetmap");
-
+const currentStyleKey = ref<"DarkMode" | "RetroMode">("DarkMode");
 const geocodingTimeoutId = ref<number | null>(null);
+
+const controls: MapControl[] = [
+  {
+    position: google.maps.ControlPosition.RIGHT_BOTTOM,
+    createElement: ({ map }) => {
+      const container = document.createElement("div");
+      container.style.display = "flex";
+      container.style.flexDirection = "column";
+      container.style.gap = "4px";
+      container.style.margin = "8px";
+
+      const btnBase = () => {
+        const btn = document.createElement("button");
+        btn.classList.add("custom-map-control-button");
+        btn.style.width = "32px";
+        btn.style.height = "32px";
+        btn.style.borderRadius = "4px";
+        btn.style.border = "none";
+        btn.style.cursor = "pointer";
+        btn.style.boxShadow = "0 1px 4px rgba(0,0,0,0.3)";
+        btn.style.background = "#fff";
+        return btn;
+      };
+
+      // + button
+      const zoomInBtn = btnBase();
+      zoomInBtn.textContent = "+";
+      zoomInBtn.title = "Zoom in";
+      zoomInBtn.addEventListener("click", () => {
+        const currentZoom = map.getZoom() ?? 0;
+        map.setZoom(currentZoom + 1);
+      });
+
+      // - button
+      const zoomOutBtn = btnBase();
+      zoomOutBtn.textContent = "−";
+      zoomOutBtn.title = "Zoom out";
+      zoomOutBtn.addEventListener("click", () => {
+        const currentZoom = map.getZoom() ?? 0;
+        map.setZoom(currentZoom - 1);
+      });
+
+      container.appendChild(zoomInBtn);
+      container.appendChild(zoomOutBtn);
+
+      return container;
+    },
+  },
+  {
+    position: google.maps.ControlPosition.TOP_CENTER,
+    createElement: ({ map }) => {
+      const btn = document.createElement("button");
+
+      btn.classList.add("custom-map-control-button");
+      btn.style.marginTop = "8px";
+      btn.textContent =
+        currentStyleKey.value === "DarkMode"
+          ? "Switch to style Retro"
+          : "Switch to style Dark";
+
+      btn.addEventListener("click", () => {
+        // flip between X and Y
+        currentStyleKey.value =
+          currentStyleKey.value === "DarkMode" ? "RetroMode" : "DarkMode";
+
+        // update button label
+        btn.textContent =
+          currentStyleKey.value === "DarkMode"
+            ? "Switch to style Retro"
+            : "Switch to style Dark";
+
+        // map will react via your `style` watcher,
+        // but you *can* also force it directly if you want:
+        const styles =
+          currentStyleKey.value === "DarkMode" ? DarkModeStyle : RetroStyle;
+        map.setOptions({ styles: styles });
+      });
+
+      return btn;
+    },
+  },
+];
 
 /**
  * Get the appropriate reverse geocoding function based on selected service
