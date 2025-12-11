@@ -1,20 +1,16 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { importLibrary } from "@googlemaps/js-api-loader";
-import type {
-  LatLngValue,
-  GoogleMapsSource,
-  InputMapMode,
-} from "../../types/map";
+import type { LatLngValue, InputMapMode } from "../../types/map";
 import type { MarkerConfig, MapControl } from "../../types/google_map";
 
 interface Props {
   modelValue: LatLngValue;
   center?: [number, number];
   zoom?: number;
-  source: GoogleMapsSource;
   mode: InputMapMode;
-  style?: google.maps.MapTypeStyle[];
+  mapId: string;
+  colorScheme?: "LIGHT" | "DARK";
   mapOptions?: google.maps.MapOptions;
   marker?: MarkerConfig;
   controls?: MapControl[];
@@ -23,7 +19,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   zoom: 4,
   mode: "click",
-  style: () => [],
+  colorScheme: "LIGHT",
   mapOptions: () => ({
     disableDefaultUI: true,
   }),
@@ -58,8 +54,13 @@ const localValue = ref<LatLngValue>({
 });
 
 let googleMap: google.maps.Map | null = null;
+let marker: google.maps.marker.AdvancedMarkerElement | null = null;
 
 function destroyMap(): void {
+  if (marker) {
+    marker.map = null;
+    marker = null;
+  }
   if (googleMap) {
     googleMap = null;
   }
@@ -83,8 +84,9 @@ async function initMap(): Promise<void> {
   googleMap = new Map(mapContainer.value, {
     center: initialCenter,
     zoom: initialZoom,
+    mapId: props.mapId,
+    colorScheme: props.colorScheme,
     ...props.mapOptions,
-    mapId: props.source.mapId,
   });
 
   props.controls?.forEach((control) => {
@@ -163,7 +165,8 @@ async function initMap(): Promise<void> {
         }
       }
 
-      const marker = new AdvancedMarkerElement({
+      // @ts-ignore
+      marker = new AdvancedMarkerElement({
         map: googleMap,
         position: initialCenter,
         gmpDraggable: true,
@@ -172,6 +175,7 @@ async function initMap(): Promise<void> {
       });
 
       const updatePosition = () => {
+        if (!marker) return;
         const pos = marker.position as google.maps.LatLng;
         if (!pos) return;
 
@@ -229,14 +233,35 @@ watch(
 );
 
 watch(
-  () => props.style,
-  (newStyle) => {
-    if (!googleMap) return;
-    googleMap.setOptions({ styles: newStyle ?? null });
-    console.log("Map style updated.");
-    console.log(newStyle);
+  [() => props.mapId, () => props.colorScheme],
+  async (_) => {
+    if (!googleMap) return; // Wait for initial map
+
+    console.log(
+      `Reinitializing map with new mapId ${props.mapId} or colorScheme ${props.colorScheme}`
+    );
+
+    // Save current state
+    const currentCenter = googleMap.getCenter();
+    const currentZoom = googleMap.getZoom();
+
+    // Clean up marker
+    if (marker) {
+      marker.map = null;
+      marker = null;
+    }
+
+    // Destroy current map
+    destroyMap();
+
+    // Reinitialize with new mapId
+    await initMap();
+
+    // Restore state
+    if (currentCenter) googleMap?.setCenter(currentCenter);
+    if (currentZoom != null) googleMap?.setZoom(currentZoom);
   },
-  { deep: true }
+  { immediate: false }
 );
 </script>
 

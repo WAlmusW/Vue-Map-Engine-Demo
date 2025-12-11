@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import type { GoogleMapsSource } from "../../types/map";
+import type { MapControl } from "../../types/google_map";
 
 /* ===========================
    Google Maps imports
@@ -12,15 +13,24 @@ import type { GoogleMapsSource } from "../../types/map";
 import { importLibrary } from "@googlemaps/js-api-loader";
 
 interface Props {
-  lat: number;
-  lng: number;
+  center?: [number, number];
   zoom?: number;
-  popupText?: string;
   source: GoogleMapsSource;
+  mapId?: string;
+  colorScheme?: "LIGHT" | "DARK";
+  mapOptions?: google.maps.MapOptions;
+  controls?: MapControl[];
+  markers?: google.maps.marker.AdvancedMarkerElement[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
   zoom: 12,
+  colorScheme: "LIGHT",
+  mapOptions: () => ({
+    disableDefaultUI: true,
+  }),
+  controls: () => [],
+  markers: () => [],
 });
 
 /* ===========================
@@ -31,16 +41,69 @@ const mapContainer = ref<HTMLDivElement | null>(null);
 /* ===========================
    Google Maps state
    =========================== */
-let googleMap: any = null;
-let googleMarker: any = null;
+let googleMap: google.maps.Map | null = null;
+let attachedMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
 
 /* ===========================
    Destroy map
    =========================== */
 function destroyMap() {
+  // Detach all markers from the map
+  if (attachedMarkers.length > 0) {
+    attachedMarkers.forEach((marker) => {
+      marker.map = null;
+    });
+    attachedMarkers = [];
+  }
+
   if (googleMap) {
     googleMap = null;
-    googleMarker = null;
+  }
+}
+
+/* ===========================
+   Attach markers to map
+   =========================== */
+function attachMarkers() {
+  if (!googleMap) return;
+
+  // Detach existing markers
+  attachedMarkers.forEach((marker) => {
+    marker.map = null;
+  });
+  attachedMarkers = [];
+
+  // Attach new markers
+  props.markers?.forEach((marker) => {
+    marker.map = googleMap;
+    attachedMarkers.push(marker);
+  });
+
+  // Fit bounds to show all markers if any exist
+  if (props.markers && props.markers.length > 0) {
+    fitMapToMarkers();
+  }
+}
+
+/* ===========================
+   Fit map to show all markers
+   =========================== */
+function fitMapToMarkers() {
+  if (!googleMap || !props.markers || props.markers.length === 0) return;
+
+  const bounds = new google.maps.LatLngBounds();
+
+  props.markers.forEach((marker) => {
+    if (marker.position) {
+      bounds.extend(marker.position as google.maps.LatLng);
+    }
+  });
+
+  googleMap.fitBounds(bounds);
+
+  // If only one marker, set a reasonable zoom level
+  if (props.markers.length === 1) {
+    googleMap.setZoom(Math.min(googleMap.getZoom() || 12, 15));
   }
 }
 
@@ -51,68 +114,57 @@ async function initMap() {
   destroyMap();
   if (!mapContainer.value) return;
 
-  const initialCenter: google.maps.LatLngLiteral = {
-    lat: props.lat,
-    lng: props.lng,
-  };
+  const initialCenter: google.maps.LatLngLiteral = props.center
+    ? { lat: props.center[0], lng: props.center[1] }
+    : { lat: 0, lng: 0 };
   const initialZoom = props.zoom;
 
   const src = props.source;
-  if (!src || src.type !== "google" || !src.apiKey) {
-    console.error(
-      "Google Maps engine requires a source with type 'google' and an apiKey"
-    );
+  if (!src || src.type !== "google") {
+    console.error("Google Maps engine requires a source with type 'google'");
     return;
   }
 
   // Need to wait for next tick to ensure DOM is ready
   await nextTick();
 
-  const { Map, Marker, InfoWindow } = await importLibrary("maps");
+  const { Map } = await importLibrary("maps");
 
-  // The google namespace is now available globally
   googleMap = new Map(mapContainer.value, {
     center: initialCenter,
     zoom: initialZoom,
-    ...(src.mapId ? { mapId: src.mapId } : {}),
-    disableDefaultUI: true,
-    cameraControl: true,
-    fullscreenControl: true,
+    ...(props.mapId ?? src.mapId ? { mapId: props.mapId ?? src.mapId } : {}),
+    colorScheme: props.colorScheme,
+    ...props.mapOptions,
   });
 
-  googleMarker = new Marker({
-    position: { lat: props.lat, lng: props.lng },
-    map: googleMap,
+  // Add controls
+  props.controls?.forEach((control) => {
+    const el = control.createElement({ map: googleMap! });
+
+    const position = control.position ?? google.maps.ControlPosition.TOP_RIGHT;
+
+    const ctrlArray = googleMap!.controls[position];
+
+    if (typeof control.index === "number") {
+      ctrlArray!.insertAt(control.index, el);
+    } else {
+      ctrlArray!.push(el);
+    }
   });
 
-  if (props.popupText) {
-    const infoWindow = new InfoWindow({
-      content: props.popupText,
-    });
-    googleMarker.addListener("click", () => {
-      infoWindow.open({ anchor: googleMarker, map: googleMap });
-    });
-  }
-}
-
-/* ===========================
-   Markers update
-   =========================== */
-function updateMarker() {
-  if (!googleMap || !googleMarker) return;
-
-  googleMarker.setPosition({ lat: props.lat, lng: props.lng });
+  // Attach markers
+  attachMarkers();
 }
 
 /* ===========================
    Watchers
    =========================== */
 watch(
-  () => [props.lat, props.lng],
-  () => {
-    if (!googleMap) return;
-    googleMap.setCenter({ lat: props.lat, lng: props.lng });
-    updateMarker();
+  () => props.center,
+  (newCenter) => {
+    if (!newCenter || !googleMap) return;
+    googleMap.setCenter({ lat: newCenter[0], lng: newCenter[1] });
   }
 );
 
@@ -122,6 +174,26 @@ watch(
     if (typeof newZoom !== "number" || !googleMap) return;
     googleMap.setZoom(newZoom);
   }
+);
+
+watch(
+  () => props.markers,
+  () => {
+    attachMarkers();
+  },
+  { deep: true }
+);
+
+watch(
+  [() => props.mapId, () => props.colorScheme],
+  async () => {
+    if (!googleMap) return;
+    console.log(
+      `Reinitializing map with new mapId ${props.mapId} or colorScheme ${props.colorScheme}`
+    );
+    await initMap();
+  },
+  { immediate: false }
 );
 
 /* ===========================

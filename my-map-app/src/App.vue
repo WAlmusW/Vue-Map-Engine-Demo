@@ -4,15 +4,12 @@
 
     <section class="section">
       <h2>1. Input Map (pick coordinates)</h2>
-      {{ DarkModeStyle }}
 
       <InputGoogle
         v-model="position"
         mode="drag"
-        :source="{
-          type: 'google',
-        }"
-        :style="DarkModeStyle"
+        :mapId="currentMapId"
+        :colorScheme="currentColorScheme"
         :controls="controls"
       />
 
@@ -54,15 +51,15 @@
     >
       <h2>2. Display Map (read-only)</h2>
 
-      <h3>Using Google Maps</h3>
+      <h3>Using Google Maps (Multiple Markers with CustomMarker)</h3>
       <DisplayGoogle
-        :lat="position.lat"
-        :lng="position.lng"
+        :center="[position.lat || 0, position.lng || 0]"
         :zoom="6"
-        :popupText="'This is the selected point'"
         :source="{
           type: 'google',
         }"
+        :mapId="currentMapId"
+        :markers="customMarkers"
       />
 
       <h3>Using Leaflet + OpenStreetMap</h3>
@@ -149,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import InputGoogle from "./components/inputmap/InputGoogle.vue";
 import DisplayGoogle from "./components/displaymap/DisplayGoogle.vue";
 import DisplayLeaflet from "./components/displaymap/DisplayLeaflet.vue";
@@ -161,10 +158,7 @@ import {
 } from "./services/openStreetMapService";
 import { reverseGeocode as gmapsReverseGeocode } from "./services/googleMapsService";
 import type { MapControl } from "./types/google_map";
-import {
-  DarkModeStyle,
-  RetroStyle,
-} from "./components/inputmap/GoogleMapStyle";
+import { createMarker } from "./components/displaymap/CustomMarker";
 
 interface LatLngValue {
   lat: number | null;
@@ -179,8 +173,60 @@ const position = ref<LatLngValue>({
 const address = ref<string>("");
 const isLoadingAddress = ref<boolean>(false);
 const selectedService = ref<"openstreetmap" | "googlemaps">("openstreetmap");
-const currentStyleKey = ref<"DarkMode" | "RetroMode">("DarkMode");
+const currentStyleKey = ref<"BlankStyle" | "CompleteStyle">("BlankStyle");
+const currentColorScheme = ref<"LIGHT" | "DARK">("LIGHT");
 const geocodingTimeoutId = ref<number | null>(null);
+
+const BLANK_STYLE_ID = "d9de4adcf9c60341925a7f69";
+const COMPLETE_STYLE_ID = "d9de4adcf9c603413df4218f";
+const currentMapId = computed(() =>
+  currentStyleKey.value === "BlankStyle" ? BLANK_STYLE_ID : COMPLETE_STYLE_ID
+);
+
+// Custom markers created with the CustomMarker utility
+const customMarkers = ref<google.maps.marker.AdvancedMarkerElement[]>([]);
+
+// Create markers when position is set
+watch(position, async (newPosition) => {
+  if (newPosition.lat != null && newPosition.lng != null) {
+    // Clear existing markers
+    customMarkers.value = [];
+
+    // Create main marker (selected position)
+    const mainMarker = await createMarker({
+      position: { lat: newPosition.lat, lng: newPosition.lng },
+      marker: {
+        kind: "pin",
+        pinOptions: {
+          scale: 1.2,
+          glyph: "📍",
+          glyphColor: "white",
+          background: "#4285F4",
+        },
+      },
+      popup: "Selected Location",
+      hoverable: true,
+    });
+
+    // Create additional marker (offset for demo)
+    const offsetMarker = await createMarker({
+      position: {
+        lat: newPosition.lat + 1,
+        lng: newPosition.lng + 1,
+      },
+      marker: {
+        kind: "img",
+        src: "https://developers.google.com/maps/images/maps-icon.svg",
+      },
+      popup: "Nearby Marker",
+      title: "Nearby Location",
+    });
+
+    customMarkers.value = [mainMarker, offsetMarker];
+  } else {
+    customMarkers.value = [];
+  }
+});
 
 const controls: MapControl[] = [
   {
@@ -231,32 +277,55 @@ const controls: MapControl[] = [
   },
   {
     position: google.maps.ControlPosition.TOP_CENTER,
-    createElement: ({ map }) => {
+    createElement: (_) => {
       const btn = document.createElement("button");
 
       btn.classList.add("custom-map-control-button");
       btn.style.marginTop = "8px";
       btn.textContent =
-        currentStyleKey.value === "DarkMode"
-          ? "Switch to style Retro"
-          : "Switch to style Dark";
+        currentStyleKey.value === "BlankStyle"
+          ? "Switch to style Complete"
+          : "Switch to style Blank";
 
       btn.addEventListener("click", () => {
         // flip between X and Y
         currentStyleKey.value =
-          currentStyleKey.value === "DarkMode" ? "RetroMode" : "DarkMode";
+          currentStyleKey.value === "BlankStyle"
+            ? "CompleteStyle"
+            : "BlankStyle";
 
         // update button label
         btn.textContent =
-          currentStyleKey.value === "DarkMode"
-            ? "Switch to style Retro"
-            : "Switch to style Dark";
+          currentStyleKey.value === "BlankStyle"
+            ? "Switch to style Complete"
+            : "Switch to style Blank";
+      });
 
-        // map will react via your `style` watcher,
-        // but you *can* also force it directly if you want:
-        const styles =
-          currentStyleKey.value === "DarkMode" ? DarkModeStyle : RetroStyle;
-        map.setOptions({ styles: styles });
+      return btn;
+    },
+  },
+  {
+    position: google.maps.ControlPosition.LEFT_BOTTOM,
+    createElement: (_) => {
+      const btn = document.createElement("button");
+
+      btn.classList.add("custom-map-control-button");
+      btn.style.marginTop = "8px";
+      btn.textContent =
+        currentColorScheme.value === "LIGHT"
+          ? "Switch to style DARK"
+          : "Switch to style LIGHT";
+
+      btn.addEventListener("click", () => {
+        // flip between X and Y
+        currentColorScheme.value =
+          currentColorScheme.value === "LIGHT" ? "DARK" : "LIGHT";
+
+        // update button label
+        btn.textContent =
+          currentColorScheme.value === "LIGHT"
+            ? "Switch to style DARK"
+            : "Switch to style LIGHT";
       });
 
       return btn;
