@@ -1,5 +1,5 @@
 import { importLibrary } from "@googlemaps/js-api-loader";
-import type { MarkerConfig } from "../../types/google_map";
+import type { MarkerConfig } from "./Configs";
 
 export interface CustomMarkerOptions {
   position: { lat: number; lng: number };

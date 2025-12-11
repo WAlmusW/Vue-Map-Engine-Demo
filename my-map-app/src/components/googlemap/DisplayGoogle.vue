@@ -4,8 +4,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
-import type { GoogleMapsSource } from "../../types/map";
-import type { MapControl } from "../../types/google_map";
+import type { MapControl, MapFocusConfig } from "./Configs";
 
 /* ===========================
    Google Maps imports
@@ -15,10 +14,10 @@ import { importLibrary } from "@googlemaps/js-api-loader";
 interface Props {
   center?: [number, number];
   zoom?: number;
-  source: GoogleMapsSource;
   mapId?: string;
   colorScheme?: "LIGHT" | "DARK";
   mapOptions?: google.maps.MapOptions;
+  focusOn?: MapFocusConfig;
   controls?: MapControl[];
   markers?: google.maps.marker.AdvancedMarkerElement[];
 }
@@ -37,6 +36,8 @@ const props = withDefaults(defineProps<Props>(), {
    State
    =========================== */
 const mapContainer = ref<HTMLDivElement | null>(null);
+const placeIdFocused = ref<string | null>(null);
+let featureLayer;
 
 /* ===========================
    Google Maps state
@@ -91,20 +92,72 @@ function attachMarkers() {
 function fitMapToMarkers() {
   if (!googleMap || !props.markers || props.markers.length === 0) return;
 
-  const bounds = new google.maps.LatLngBounds();
-
   props.markers.forEach((marker) => {
-    if (marker.position) {
-      bounds.extend(marker.position as google.maps.LatLng);
+    var currentBounds = googleMap!.getBounds();
+    var markerPosition = marker.position;
+
+    if (!currentBounds?.contains(markerPosition!)) {
+      var newBounds = currentBounds?.extend(markerPosition!);
+      googleMap!.fitBounds(newBounds!, 100);
     }
   });
-
-  googleMap.fitBounds(bounds);
 
   // If only one marker, set a reasonable zoom level
   if (props.markers.length === 1) {
     googleMap.setZoom(Math.min(googleMap.getZoom() || 12, 15));
   }
+}
+
+function getPlaceId() {
+  if (!googleMap || !props.focusOn) return;
+
+  const service = new google.maps.places.PlacesService(googleMap);
+
+  const request = {
+    query: props.focusOn.name,
+    fields: ["place_id"],
+  };
+
+  service.findPlaceFromQuery(request, (results, status) => {
+    if (
+      status === google.maps.places.PlacesServiceStatus.OK &&
+      results &&
+      results[0]
+    ) {
+      const placeId = results[0].place_id;
+      console.log("Found place ID:", placeId);
+      if (placeId) placeIdFocused.value = placeId;
+    } else {
+      console.error("Place not found or error occurred:", status);
+    }
+  });
+}
+
+function highlightFocused() {
+  if (!googleMap || !placeIdFocused.value || !props.focusOn) return;
+
+  featureLayer = googleMap.getFeatureLayer(props.focusOn.featureType);
+
+  const featureStyleOptions: google.maps.FeatureStyleOptions =
+    props.focusOn.featureStyleOptions;
+
+  featureLayer.style = (options) => {
+    const f = options?.feature;
+    if (!f) return undefined;
+
+    // Try common locations where an id might live (use a type assertion only here)
+    const placeId =
+      (f as any).placeId ??
+      (f as any).id ??
+      (f as any).properties?.placeId ??
+      (f as any).properties?.place_id;
+
+    if (!placeId) return undefined;
+    if (String(placeId) === placeIdFocused.value) {
+      return featureStyleOptions;
+    }
+    return undefined;
+  };
 }
 
 /* ===========================
@@ -119,21 +172,16 @@ async function initMap() {
     : { lat: 0, lng: 0 };
   const initialZoom = props.zoom;
 
-  const src = props.source;
-  if (!src || src.type !== "google") {
-    console.error("Google Maps engine requires a source with type 'google'");
-    return;
-  }
-
   // Need to wait for next tick to ensure DOM is ready
   await nextTick();
 
   const { Map } = await importLibrary("maps");
+  await importLibrary("places");
 
   googleMap = new Map(mapContainer.value, {
     center: initialCenter,
     zoom: initialZoom,
-    ...(props.mapId ?? src.mapId ? { mapId: props.mapId ?? src.mapId } : {}),
+    mapId: props.mapId,
     colorScheme: props.colorScheme,
     ...props.mapOptions,
   });
@@ -155,6 +203,12 @@ async function initMap() {
 
   // Attach markers
   attachMarkers();
+
+  // Focus on place if specified
+  if (props.focusOn) {
+    getPlaceId();
+    highlightFocused();
+  }
 }
 
 /* ===========================

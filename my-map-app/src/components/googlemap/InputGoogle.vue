@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { importLibrary } from "@googlemaps/js-api-loader";
 import type { LatLngValue, InputMapMode } from "../../types/map";
-import type { MarkerConfig, MapControl } from "../../types/google_map";
+import type { MarkerConfig, MapControl } from "./Configs";
 
 interface Props {
   modelValue: LatLngValue;
@@ -12,7 +12,8 @@ interface Props {
   mapId: string;
   colorScheme?: "LIGHT" | "DARK";
   mapOptions?: google.maps.MapOptions;
-  marker?: MarkerConfig;
+  customMarkers?: google.maps.marker.AdvancedMarkerElement[];
+  inputMarkerConfig?: MarkerConfig;
   controls?: MapControl[];
 }
 
@@ -23,7 +24,8 @@ const props = withDefaults(defineProps<Props>(), {
   mapOptions: () => ({
     disableDefaultUI: true,
   }),
-  marker: () => ({
+  markers: () => [],
+  inputMarkerConfig: () => ({
     kind: "pin",
     pinOptions: {
       scale: 1.5,
@@ -54,15 +56,66 @@ const localValue = ref<LatLngValue>({
 });
 
 let googleMap: google.maps.Map | null = null;
-let marker: google.maps.marker.AdvancedMarkerElement | null = null;
+let inputMarker: google.maps.marker.AdvancedMarkerElement | null = null;
+let attachedMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
 
 function destroyMap(): void {
-  if (marker) {
-    marker.map = null;
-    marker = null;
+  if (inputMarker) {
+    inputMarker.map = null;
+    inputMarker = null;
   }
+
+  // Detach all markers from the map
+  if (attachedMarkers.length > 0) {
+    attachedMarkers.forEach((marker) => {
+      marker.map = null;
+    });
+    attachedMarkers = [];
+  }
+
   if (googleMap) {
     googleMap = null;
+  }
+}
+
+function attachMarkers() {
+  if (!googleMap) return;
+
+  // Detach existing customMarkers
+  attachedMarkers.forEach((marker) => {
+    marker.map = null;
+  });
+  attachedMarkers = [];
+
+  // Attach new customMarkers
+  props.customMarkers?.forEach((marker) => {
+    marker.map = googleMap;
+    attachedMarkers.push(marker);
+  });
+
+  // Fit bounds to show all customMarkers if any exist
+  if (props.customMarkers && props.customMarkers.length > 0) {
+    fitMapToMarkers();
+  }
+}
+
+function fitMapToMarkers() {
+  if (!googleMap || !props.customMarkers || props.customMarkers.length === 0)
+    return;
+
+  props.customMarkers.forEach((marker) => {
+    var currentBounds = googleMap!.getBounds();
+    var markerPosition = marker.position;
+
+    if (!currentBounds?.contains(markerPosition!)) {
+      var newBounds = currentBounds?.extend(markerPosition!);
+      googleMap!.fitBounds(newBounds!);
+    }
+  });
+
+  // If only one marker, set a reasonable zoom level
+  if (props.customMarkers.length === 1) {
+    googleMap.setZoom(Math.min(googleMap.getZoom() || 12, 15));
   }
 }
 
@@ -131,7 +184,7 @@ async function initMap(): Promise<void> {
       break;
 
     case "drag":
-      const cfg = props.marker ?? { kind: "pin" as const };
+      const cfg = props.inputMarkerConfig ?? { kind: "pin" as const };
       let contentEl: HTMLElement;
 
       switch (cfg.kind) {
@@ -166,7 +219,7 @@ async function initMap(): Promise<void> {
       }
 
       // @ts-ignore
-      marker = new AdvancedMarkerElement({
+      inputMarker = new AdvancedMarkerElement({
         map: googleMap,
         position: initialCenter,
         gmpDraggable: true,
@@ -175,8 +228,8 @@ async function initMap(): Promise<void> {
       });
 
       const updatePosition = () => {
-        if (!marker) return;
-        const pos = marker.position as google.maps.LatLng;
+        if (!inputMarker) return;
+        const pos = inputMarker.position as google.maps.LatLng;
         if (!pos) return;
 
         const lat = pos.lat;
@@ -186,10 +239,13 @@ async function initMap(): Promise<void> {
         localValue.value.lng = +lng;
       };
 
-      marker.addListener("dragend", updatePosition);
+      inputMarker.addListener("dragend", updatePosition);
       updatePosition();
       break;
   }
+
+  // Attach markers
+  attachMarkers();
 }
 
 watch(
@@ -246,9 +302,9 @@ watch(
     const currentZoom = googleMap.getZoom();
 
     // Clean up marker
-    if (marker) {
-      marker.map = null;
-      marker = null;
+    if (inputMarker) {
+      inputMarker.map = null;
+      inputMarker = null;
     }
 
     // Destroy current map

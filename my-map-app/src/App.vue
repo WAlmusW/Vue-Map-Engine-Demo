@@ -55,11 +55,9 @@
       <DisplayGoogle
         :center="[position.lat || 0, position.lng || 0]"
         :zoom="6"
-        :source="{
-          type: 'google',
-        }"
         :mapId="currentMapId"
         :markers="customMarkers"
+        :focusOn="mapFocusOn"
       />
 
       <h3>Using Leaflet + OpenStreetMap</h3>
@@ -147,18 +145,21 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
-import InputGoogle from "./components/inputmap/InputGoogle.vue";
-import DisplayGoogle from "./components/displaymap/DisplayGoogle.vue";
-import DisplayLeaflet from "./components/displaymap/DisplayLeaflet.vue";
-import DisplayMaplibre from "./components/displaymap/DisplayMaplibre.vue";
-import DisplayOpenLayers from "./components/displaymap/DisplayOpenLayers.vue";
+import InputGoogle from "./components/googlemap/InputGoogle.vue";
+import DisplayGoogle from "./components/googlemap/DisplayGoogle.vue";
+import DisplayLeaflet from "./components/leaflet/DisplayLeaflet.vue";
+import DisplayMaplibre from "./components/maplibre/DisplayMaplibre.vue";
+import DisplayOpenLayers from "./components/openlayers/DisplayOpenLayers.vue";
 import {
   reverseGeocode as osmReverseGeocode,
   formatAddress,
 } from "./services/openStreetMapService";
 import { reverseGeocode as gmapsReverseGeocode } from "./services/googleMapsService";
-import type { MapControl } from "./types/google_map";
-import { createMarker } from "./components/displaymap/CustomMarker";
+import type {
+  MapControl,
+  MapFocusConfig,
+} from "./components/googlemap/Configs";
+import { createMarker } from "./components/googlemap/CustomMarker";
 
 interface LatLngValue {
   lat: number | null;
@@ -227,6 +228,18 @@ watch(position, async (newPosition) => {
     customMarkers.value = [];
   }
 });
+
+const mapFocusOn: MapFocusConfig = {
+  name: "Jakarta, Indonesia",
+  featureType: google.maps.FeatureType.ADMINISTRATIVE_AREA_LEVEL_1,
+  featureStyleOptions: {
+    fillColor: "#FF0000",
+    fillOpacity: 0.3,
+    strokeColor: "#FF0000",
+    strokeOpacity: 0.8,
+    strokeWeight: 2,
+  },
+};
 
 const controls: MapControl[] = [
   {

@@ -9,6 +9,8 @@ import "ol/ol.css";
 // Google Maps API V2 Key setup
 setOptions({
   key: import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string,
+  region: "id",
+  language: "en",
 });
 
 await importLibrary("maps");
