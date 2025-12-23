@@ -191,23 +191,7 @@ function updateBounds() {
   if (!googleMap) return;
   // Get current viewport bounds using googleMap.getBounds()
   currentBounds.value = googleMap.getBounds() || null;
-  console.log("Current bounds:", getBoundsInfo());
-}
-
-/**
- * Converts LatLngBounds to a simple object with north/east/south/west coordinates.
- * Useful for logging and debugging the current viewport boundaries.
- */
-function getBoundsInfo() {
-  if (!currentBounds.value) return null;
-  const ne = currentBounds.value.getNorthEast();
-  const sw = currentBounds.value.getSouthWest();
-  return {
-    north: ne.lat(),
-    east: ne.lng(),
-    south: sw.lat(),
-    west: sw.lng(),
-  };
+  console.log("Current bounds:", currentBounds.value?.toJSON());
 }
 
 /**
