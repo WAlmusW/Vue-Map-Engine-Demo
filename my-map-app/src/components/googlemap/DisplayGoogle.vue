@@ -3,7 +3,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
+import {
+  ref,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+  nextTick,
+  computed,
+} from "vue";
 import type { MapControl, MapFocusConfig } from "./Configs";
 
 /* ===========================
@@ -23,6 +30,7 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  center: () => [-6.2088, 106.8456], // Jakarta center for demo
   zoom: 12,
   colorScheme: "LIGHT",
   mapOptions: () => ({
@@ -44,6 +52,24 @@ let featureLayer;
    =========================== */
 let googleMap: google.maps.Map | null = null;
 let attachedMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
+
+// Bounds and marker filtering state
+const currentBounds = ref<google.maps.LatLngBounds | null>(null);
+
+/**
+ * Computed property that filters markers to only show those within current viewport bounds.
+ * This is the core of the viewport-based marker filtering example.
+ *
+ * Uses google.maps.LatLngBounds.contains() to check if each marker's position
+ * falls within the current map bounds retrieved via googleMap.getBounds().
+ */
+const visibleMarkers = computed(() => {
+  if (!currentBounds.value) return props.markers || [];
+  return (props.markers || []).filter((marker) => {
+    if (!marker.position) return false;
+    return currentBounds.value!.contains(marker.position);
+  });
+});
 
 /* ===========================
    Destroy map
@@ -92,15 +118,15 @@ function attachMarkers() {
 function fitMapToMarkers() {
   if (!googleMap || !props.markers || props.markers.length === 0) return;
 
-  props.markers.forEach((marker) => {
-    var currentBounds = googleMap!.getBounds();
-    var markerPosition = marker.position;
+  const bounds = new google.maps.LatLngBounds();
 
-    if (!currentBounds?.contains(markerPosition!)) {
-      var newBounds = currentBounds?.extend(markerPosition!);
-      googleMap!.fitBounds(newBounds!, 100);
+  props.markers.forEach((marker) => {
+    if (marker.position) {
+      bounds.extend(marker.position);
     }
   });
+
+  googleMap.fitBounds(bounds);
 
   // If only one marker, set a reasonable zoom level
   if (props.markers.length === 1) {
@@ -125,8 +151,8 @@ function getPlaceId() {
       results[0]
     ) {
       const placeId = results[0].place_id;
-      console.log("Found place ID:", placeId);
       if (placeId) placeIdFocused.value = placeId;
+      highlightFocused();
     } else {
       console.error("Place not found or error occurred:", status);
     }
@@ -141,23 +167,79 @@ function highlightFocused() {
   const featureStyleOptions: google.maps.FeatureStyleOptions =
     props.focusOn.featureStyleOptions;
 
-  featureLayer.style = (options) => {
-    const f = options?.feature;
-    if (!f) return undefined;
-
-    // Try common locations where an id might live (use a type assertion only here)
-    const placeId =
-      (f as any).placeId ??
-      (f as any).id ??
-      (f as any).properties?.placeId ??
-      (f as any).properties?.place_id;
-
-    if (!placeId) return undefined;
-    if (String(placeId) === placeIdFocused.value) {
+  // Apply the style to a single boundary.
+  //@ts-ignore
+  featureLayer.style = (options: { feature: { placeId: string } }) => {
+    if (options.feature.placeId == placeIdFocused.value) {
       return featureStyleOptions;
     }
-    return undefined;
   };
+}
+
+/* ===========================
+   Bounds and marker filtering functions
+   =========================== */
+
+/**
+ * Updates the current viewport bounds whenever the map view changes.
+ * This is called by the 'bounds_changed' event listener.
+ *
+ * The googleMap.getBounds() method returns a LatLngBounds object representing
+ * the current viewport boundaries (northeast and southwest corners).
+ */
+function updateBounds() {
+  if (!googleMap) return;
+  // Get current viewport bounds using googleMap.getBounds()
+  currentBounds.value = googleMap.getBounds() || null;
+  console.log("Current bounds:", getBoundsInfo());
+}
+
+/**
+ * Converts LatLngBounds to a simple object with north/east/south/west coordinates.
+ * Useful for logging and debugging the current viewport boundaries.
+ */
+function getBoundsInfo() {
+  if (!currentBounds.value) return null;
+  const ne = currentBounds.value.getNorthEast();
+  const sw = currentBounds.value.getSouthWest();
+  return {
+    north: ne.lat(),
+    east: ne.lng(),
+    south: sw.lat(),
+    west: sw.lng(),
+  };
+}
+
+/**
+ * Attaches only the markers that are currently visible within the viewport.
+ * This function demonstrates viewport-based marker filtering:
+ *
+ * 1. Detaches all currently attached markers
+ * 2. Attaches only markers from the visibleMarkers computed property
+ * 3. visibleMarkers filters props.markers using LatLngBounds.contains()
+ *
+ * This approach improves performance by only rendering markers in the current view.
+ */
+function attachVisibleMarkers() {
+  if (!googleMap) return;
+
+  // Detach existing markers
+  attachedMarkers.forEach((marker) => {
+    marker.map = null;
+  });
+  attachedMarkers = [];
+
+  // Attach only visible markers (filtered by viewport bounds)
+  visibleMarkers.value.forEach((marker) => {
+    marker.map = googleMap;
+    attachedMarkers.push(marker);
+  });
+
+  console.log(
+    `Attached ${attachedMarkers.length} visible markers out of ${
+      (props.markers || []).length
+    } total`
+  );
 }
 
 /* ===========================
@@ -201,19 +283,38 @@ async function initMap() {
     }
   });
 
-  // Attach markers
-  attachMarkers();
+  // Update bounds initially
+  updateBounds();
+
+  // Attach visible markers
+  attachVisibleMarkers();
+
+  // Add event listeners for bounds changes
+  googleMap.addListener("bounds_changed", () => {
+    updateBounds();
+  });
+
+  googleMap.addListener("idle", () => {
+    // Update markers when map stops moving
+    attachVisibleMarkers();
+  });
 
   // Focus on place if specified
   if (props.focusOn) {
     getPlaceId();
-    highlightFocused();
   }
 }
 
 /* ===========================
    Watchers
    =========================== */
+watch(
+  () => visibleMarkers.value,
+  () => {
+    attachVisibleMarkers();
+  },
+  { immediate: false }
+);
 watch(
   () => props.center,
   (newCenter) => {
@@ -242,9 +343,6 @@ watch(
   [() => props.mapId, () => props.colorScheme],
   async () => {
     if (!googleMap) return;
-    console.log(
-      `Reinitializing map with new mapId ${props.mapId} or colorScheme ${props.colorScheme}`
-    );
     await initMap();
   },
   { immediate: false }

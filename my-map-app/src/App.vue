@@ -45,13 +45,29 @@
       </p>
     </section>
 
+    <section class="section">
+      <h2>2. Google Maps Bounds Demo</h2>
+      <p>
+        This demo shows how markers are filtered based on viewport bounds using
+        <code>googleMap.getBounds()</code>. Pan and zoom to see markers
+        appear/disappear.
+      </p>
+
+      <DisplayGoogle
+        :center="[-6.2088, 106.8456]"
+        :zoom="11"
+        :mapId="currentMapId"
+        :markers="sampleMarkers"
+      />
+    </section>
+
     <section
       class="section display-section"
       v-if="position.lat != null && position.lng != null"
     >
-      <h2>2. Display Map (read-only)</h2>
+      <h2>3. Display Map (read-only)</h2>
 
-      <h3>Using Google Maps (Multiple Markers with CustomMarker)</h3>
+      <h3>Using Google Maps (User-selected position)</h3>
       <DisplayGoogle
         :center="[position.lat || 0, position.lng || 0]"
         :zoom="6"
@@ -144,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, onMounted } from "vue";
 import InputGoogle from "./components/googlemap/InputGoogle.vue";
 import DisplayGoogle from "./components/googlemap/DisplayGoogle.vue";
 import DisplayLeaflet from "./components/leaflet/DisplayLeaflet.vue";
@@ -183,6 +199,9 @@ const COMPLETE_STYLE_ID = "d9de4adcf9c603413df4218f";
 const currentMapId = computed(() =>
   currentStyleKey.value === "BlankStyle" ? BLANK_STYLE_ID : COMPLETE_STYLE_ID
 );
+
+// Sample markers for bounds demonstration
+const sampleMarkers = ref<google.maps.marker.AdvancedMarkerElement[]>([]);
 
 // Custom markers created with the CustomMarker utility
 const customMarkers = ref<google.maps.marker.AdvancedMarkerElement[]>([]);
@@ -229,15 +248,115 @@ watch(position, async (newPosition) => {
   }
 });
 
+// Initialize sample markers for bounds demo
+const initSampleMarkers = async () => {
+  // Jakarta landmarks (inside initial viewport)
+  const jakartaLandmarks = [
+    { lat: -6.1754, lng: 106.8272, title: "Monas", desc: "National Monument" },
+    {
+      lat: -6.2088,
+      lng: 106.8456,
+      title: "Jakarta Center",
+      desc: "City Center",
+    },
+    {
+      lat: -6.2146,
+      lng: 106.8451,
+      title: "Istiqlal Mosque",
+      desc: "National Mosque",
+    },
+    {
+      lat: -6.1702,
+      lng: 106.8227,
+      title: "Jakarta Cathedral",
+      desc: "Jakarta Cathedral",
+    },
+    {
+      lat: -6.1275,
+      lng: 106.8141,
+      title: "Ancol Beach",
+      desc: "Beach & Recreation",
+    },
+  ];
+
+  // Nearby cities (outside initial viewport)
+  const nearbyCities = [
+    {
+      lat: -6.9175,
+      lng: 107.6191,
+      title: "Bandung",
+      desc: "West Java Capital",
+    },
+    {
+      lat: -6.595,
+      lng: 106.8167,
+      title: "Bogor",
+      desc: "Botanical Gardens City",
+    },
+    { lat: -6.4025, lng: 106.7942, title: "Depok", desc: "University City" },
+    { lat: -6.2376, lng: 106.9756, title: "Bekasi", desc: "Industrial City" },
+    { lat: -6.1744, lng: 106.8227, title: "Tangerang", desc: "Satellite City" },
+  ];
+
+  // Remote cities (far outside viewport)
+  const remoteCities = [
+    {
+      lat: -7.7956,
+      lng: 110.3695,
+      title: "Yogyakarta",
+      desc: "Cultural Heritage City",
+    },
+    {
+      lat: -7.2575,
+      lng: 112.7521,
+      title: "Surabaya",
+      desc: "East Java Capital",
+    },
+    { lat: -8.6705, lng: 115.2126, title: "Bali", desc: "Island Paradise" },
+  ];
+
+  const allLocations = [...jakartaLandmarks, ...nearbyCities, ...remoteCities];
+
+  for (const location of allLocations) {
+    const marker = await createMarker({
+      position: { lat: location.lat, lng: location.lng },
+      marker: {
+        kind: "pin",
+        pinOptions: {
+          scale: 1.0,
+          glyph: "📍",
+          glyphColor: "white",
+          background: jakartaLandmarks.some((l) => l.title === location.title)
+            ? "#4285F4"
+            : "#34A853",
+        },
+      },
+      title: location.title,
+      popup: `<div style="max-width: 200px;"><h4>${location.title}</h4><p>${location.desc}</p><small>Lat: ${location.lat}, Lng: ${location.lng}</small></div>`,
+      hoverable: true,
+    });
+    sampleMarkers.value.push(marker);
+  }
+
+  console.log(
+    `Created ${sampleMarkers.value.length} sample markers for bounds demo`
+  );
+};
+
+// Initialize markers on mount
+onMounted(async () => {
+  await initSampleMarkers();
+});
+
 const mapFocusOn: MapFocusConfig = {
-  name: "Jakarta, Indonesia",
+  name: "Daerah Khusus Ibukota Jakarta",
   featureType: google.maps.FeatureType.ADMINISTRATIVE_AREA_LEVEL_1,
   featureStyleOptions: {
-    fillColor: "#FF0000",
-    fillOpacity: 0.3,
-    strokeColor: "#FF0000",
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    strokeColor: "#810FCB",
+    strokeOpacity: 1.0,
+    strokeWeight: 3.0,
+    fillColor: "#810FCB",
+    fillOpacity: 0.5,
   },
 };
 
